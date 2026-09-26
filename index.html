@@ -235,7 +235,7 @@ async function start(){
   } catch (e) {
     if (ctx){ ctx.close().catch(() => {}); ctx = null; }
     const hint = step === "microphone permission" && e.name === "NotAllowedError"
-      ? "microphone permission denied. On iPhone: Settings → Safari → Microphone → Allow (or aA → Website Settings), then reload."
+      ? "microphone permission denied. iPhone Chrome: Settings app → Chrome → turn Microphone on, then reload and tap Allow. iPhone Safari: aA → Website Settings → Microphone → Allow."
       : `${step} failed (${e.name}): ${e.message}`;
     status("bad", hint); $("go").disabled = false;
   }
