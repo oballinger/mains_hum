@@ -1,0 +1,781 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mains Hum Scope</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chivo:wght@500;700&family=Chivo+Mono:wght@400;600&display=swap">
+<style>
+:root{
+  --bg:#F3F5FA; --panel:#FFFFFF; --ink:#0F1B33; --muted:#5A6782; --grid:#DFE5F0;
+  --trace:#1F4FA0; --gold:#B8871B; --hum:#D9A400; --ok:#1E8A55; --warn:#C0392B; --band:rgba(90,103,130,.16);
+}
+@media (prefers-color-scheme: dark){
+  :root{ color-scheme:dark;
+    --bg:#0B1120; --panel:#121A2D; --ink:#E4EAF6; --muted:#8A97B3; --grid:#1F2A42;
+    --trace:#86ADFF; --gold:#E6BE55; --hum:#FFD23F; --ok:#4CC98A; --warn:#FF6B5E; --band:rgba(138,151,179,.18);
+  }
+}
+*{box-sizing:border-box} [hidden]{display:none!important}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 Chivo,system-ui,sans-serif}
+.wrap{max-width:1180px;margin:0 auto;padding:24px 16px 40px;display:flex;flex-direction:column;gap:16px}
+header{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px}
+h1{font:700 1.6rem/1.1 Chivo,sans-serif;margin:0;letter-spacing:-.01em}
+h1 small{font:400 .8rem "Chivo Mono",monospace;color:var(--muted);letter-spacing:.04em;margin-left:10px}
+.pill{font:600 .78rem "Chivo Mono",monospace;padding:6px 12px;border-radius:99px;border:1px solid currentColor;display:inline-flex;gap:8px;align-items:center}
+.pill i{width:8px;height:8px;border-radius:50%;background:currentColor}
+.pill.ok{color:var(--ok)} .pill.bad{color:var(--warn)} .pill.idle{color:var(--muted)}
+.verdict{display:flex;flex-wrap:wrap;align-items:center;gap:14px 28px;background:var(--panel);border:1px solid var(--grid);border-radius:10px;padding:16px 18px;border-left:5px solid var(--muted)}
+.verdict.ok{border-left-color:var(--ok)} .verdict.bad{border-left-color:var(--warn)}
+.verdict .v{font:700 1.25rem/1.2 Chivo,sans-serif;flex:1 1 260px}
+.verdict .v small{display:block;font:400 .8rem/1.4 "Chivo Mono",monospace;color:var(--muted);margin-top:4px}
+.big{display:flex;flex-direction:column;gap:2px;min-width:130px}
+.big span{font:.7rem "Chivo Mono",monospace;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}
+.big b{font:600 1.7rem/1.1 "Chivo Mono",monospace;font-variant-numeric:tabular-nums}
+.big small{font:.72rem "Chivo Mono",monospace;color:var(--muted)}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px}
+.stat{background:var(--panel);border:1px solid var(--grid);border-radius:8px;padding:10px 14px}
+.stat b{display:block;font:600 1.3rem/1.2 "Chivo Mono",monospace;font-variant-numeric:tabular-nums}
+.stat span{font:.7rem "Chivo Mono",monospace;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}
+.stat small{font:.72rem "Chivo Mono",monospace;color:var(--muted)}
+.card{background:var(--panel);border:1px solid var(--grid);border-radius:8px;padding:10px}
+.card h2{font:600 .72rem "Chivo Mono",monospace;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin:2px 4px 8px;display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;align-items:center}
+canvas{display:block;width:100%}
+.pair{display:grid;grid-template-columns:minmax(260px,340px) 1fr;gap:12px}
+@media (max-width:760px){.pair{grid-template-columns:1fr}}
+#dial,#fold{height:320px} #enf{height:300px} #resid{height:120px} #fall{height:260px} #comb{height:220px} #zoom{height:230px}
+@media (max-width:700px){#zoom{height:420px}}
+.cap{font:.78rem/1.45 "Chivo Mono",monospace;color:var(--muted);margin:8px 4px 2px;max-width:90ch}
+button,select{font:600 .8rem "Chivo Mono",monospace;background:var(--panel);color:var(--ink);border:1px solid var(--grid);border-radius:6px;padding:7px 10px;cursor:pointer}
+button:hover,select:hover{border-color:var(--trace)} button:focus-visible,select:focus-visible{outline:2px solid var(--trace);outline-offset:2px}
+.mini{padding:4px 9px;font-size:.72rem;text-transform:none;letter-spacing:0}
+#go{border-color:var(--trace);color:var(--trace);font-size:.9rem;padding:9px 16px}
+#go[disabled]{opacity:.7;cursor:default}
+.controls{display:flex;flex-wrap:wrap;gap:10px 14px;align-items:center;font:.8rem "Chivo Mono",monospace;color:var(--muted)}
+.controls label{display:inline-flex;gap:6px;align-items:center}
+.legend{display:flex;flex-wrap:wrap;gap:16px;font:.78rem "Chivo Mono",monospace;color:var(--ink);margin:8px 4px 2px}
+.legend i{display:inline-block;width:18px;height:3px;border-radius:2px;vertical-align:middle;margin-right:6px}
+.legend i.box{height:10px;width:14px}
+.enfwrap{position:relative}
+.tip{position:absolute;pointer-events:none;background:var(--panel);border:1px solid var(--grid);border-radius:6px;padding:6px 8px;font:.75rem/1.4 "Chivo Mono",monospace;color:var(--ink);white-space:nowrap;box-shadow:0 2px 8px rgba(0,0,0,.15)}
+.seg{display:inline-flex;border:1px solid var(--grid);border-radius:7px;overflow:hidden}
+.seg button{border:0;border-radius:0;padding:8px 12px}
+.seg button[aria-pressed="true"]{background:var(--trace);color:var(--panel)}
+.camgrid{display:grid;grid-template-columns:minmax(200px,300px) 1fr;gap:12px;align-items:start}
+@media (max-width:760px){.camgrid{grid-template-columns:1fr}}
+#camVid{width:100%;border-radius:6px;background:#000;aspect-ratio:16/9;object-fit:cover}
+#bands{height:220px}
+.caminfo{display:grid;grid-template-columns:repeat(2,1fr);gap:6px 12px;font:.75rem "Chivo Mono",monospace;color:var(--muted);margin-top:8px}
+.caminfo b{color:var(--ink);font-weight:600;font-variant-numeric:tabular-nums}
+footer{font:.75rem "Chivo Mono",monospace;color:var(--muted)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Mains hum scope<small id="subT">Microphone · raw input, no voice processing</small></h1>
+    <span id="status" class="pill idle"><i></i><span>not listening</span></span>
+  </header>
+
+  <div class="controls">
+    <span class="seg" role="group" aria-label="Signal source"><button id="srcMic" type="button" aria-pressed="true">Microphone · hum</button><button id="srcCam" type="button" aria-pressed="false">Camera · flicker</button><button id="srcDio" type="button" aria-pressed="false">Photodiode · flicker</button></span>
+    <button id="go" type="button">Start listening</button>
+    <label id="harmLbl">Track <select id="harm">
+      <option value="0" selected>All harmonics combined</option>
+      <option value="1">50 Hz only</option><option value="2">100 Hz only</option><option value="3">150 Hz only</option>
+      <option value="4">200 Hz only</option><option value="5">250 Hz only</option><option value="6">300 Hz only</option>
+    </select></label>
+    <label>Window <select id="win"><option value="5">5 s (fast, noisier)</option><option value="10" selected>10 s</option><option value="20">20 s (slow, cleaner)</option></select></label>
+    <label>Show <select id="range"><option value="2">last 2 min</option><option value="5" selected>last 5 min</option><option value="10">last 10 min</option><option value="15">last 15 min</option></select></label>
+    <span id="srLbl"></span>
+  </div>
+
+  <div class="verdict" id="verdict">
+    <div class="v" id="vTxt">Not listening yet<small id="vSub">Press Start listening and allow the microphone.</small></div>
+    <div class="big"><span>Mains from hum</span><b id="micHz">–</b><small id="micSub">&nbsp;</small></div>
+    <div class="big"><span>GB grid (Elexon)</span><b id="gridHz">–</b><small id="gridAt">&nbsp;</small></div>
+    <div class="big"><span>Mic − grid, RMS</span><b id="rmsHz">–</b><small id="rmsSub">&nbsp;</small></div>
+  </div>
+
+  <div class="stats">
+    <div class="stat"><span>Mic level</span><b id="lvl">–</b><small>all room sound</small></div>
+    <div class="stat"><span>Hum strength</span><b id="snr">–</b><small>peak over noise floor</small></div>
+    <div class="stat"><span>Lock</span><b id="lock">–</b><small>usable windows, last 60 s</small></div>
+    <div class="stat"><span>Correlation</span><b id="matchR">–</b><small id="matchN">&nbsp;</small></div>
+    <div class="stat"><span>Harmonic weights</span><b id="wts" style="font-size:.85rem;line-height:1.5">–</b><small>share of the combined estimate</small></div>
+  </div>
+
+  <div class="card">
+    <h2><span>Mains frequency · mic hum vs official GB grid</span><span id="enfLbl">grid: Elexon BMRS, 15 s readings, ~1 min delay</span></h2>
+    <div class="enfwrap"><canvas id="enf" aria-label="Mic hum and grid frequency over time"></canvas><div class="tip" id="tip" hidden></div></div>
+    <div class="legend"><span><i style="background:var(--trace)"></i><span id="lgMic">Mic hum, converted to mains frequency</span></span><span><i style="background:var(--muted);opacity:.5"></i>Rejected window (too faint)</span><span><i style="background:var(--gold)"></i>GB grid, official</span></div>
+    <h2 style="margin-top:14px"><span>Mic − grid</span><span>grey band ±10 mHz</span></h2>
+    <canvas id="resid" aria-label="Difference between mic and grid frequency"></canvas>
+  </div>
+
+  <div class="pair">
+    <div class="card">
+      <h2><span>Phasor dial</span><button id="refBtn" type="button" class="mini">Reference: live grid</button></h2>
+      <canvas id="dial" aria-label="Phasor dial showing hum phase"></canvas>
+      <p class="cap" id="dialCap">Hum phase against a clock running at the official grid frequency. If the hum comes from the grid, the needle roughly holds still. Needle length shows how steady the phase is.</p>
+    </div>
+    <div class="card">
+      <h2><span>One mains cycle · averaged</span><span id="foldLbl">&nbsp;</span></h2>
+      <canvas id="fold" aria-label="Hum waveform averaged over many mains cycles"></canvas>
+      <div class="legend"><span><i style="background:var(--trace);opacity:.55"></i>Average of recent cycles</span><span><i style="background:var(--hum);height:4px"></i>Mains hum (harmonics of the grid frequency)</span><span><i class="box" style="background:var(--band)"></i>Noise left after averaging</span></div>
+      <p class="cap" id="foldCap">The mic signal is cut into 20 ms slices at the tracked mains frequency, and the slices are stacked. Room noise averages out; the hum repeats every cycle, so it builds up. The yellow curve is the part that repeats at the grid frequency and its multiples. If it rises well outside the grey band, the hum is real.</p>
+    </div>
+  </div>
+
+  <div class="card" id="camCard" hidden>
+    <h2><span>Camera · rolling-shutter flicker bands</span><span id="camLbl">&nbsp;</span></h2>
+    <div class="camgrid">
+      <div><video id="camVid" muted playsinline></video>
+        <div class="caminfo"><span>Frame rate</span><b id="ciFps">–</b><span>Band spacing</span><b id="ciBand">–</b><span>Row readout</span><b id="ciRow">–</b><span>Flicker depth</span><b id="ciDepth">–</b><span>Exposure</span><b id="ciExp">–</b><span>Readout</span><b id="ciDir">–</b></div></div>
+      <div><canvas id="bands" aria-label="Row brightness over time"></canvas>
+        <p class="cap">The camera reads its sensor one row at a time, so light flickering at 100 Hz lands as bright and dark horizontal bands. Each column here is one frame's row brightness with the still scene removed (gold = brighter, blue = darker). The bands drift between frames because 100 Hz does not divide evenly into the frame rate. That drift carries the flicker's exact phase, which is what gets tracked. Point the camera at a plain wall or ceiling lit by a mains LED or fluorescent lamp, and hold it still.</p></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2><span>Hum spectrogram · zoomed on mains frequency</span><span>brighter = stronger · gold: official grid</span></h2>
+    <canvas id="fall" aria-label="Zoomed spectrogram around the hum frequency"></canvas>
+    <p class="cap">Each column is one tracking window, rescaled to mains frequency (a 100 Hz hum is halved, a 150 Hz hum divided by 3, and so on). A real mains hum shows as a faint bright line lying along the gold grid line.</p>
+  </div>
+
+  <div class="card" id="zoomCard">
+    <h2><span>Harmonics up close · ±2 Hz around each multiple of 50 Hz</span><span>20 s spectra from the tracked signal</span></h2>
+    <canvas id="zoom" aria-label="Zoomed spectra around each harmonic of 50 Hz"></canvas>
+    <div class="legend"><span><i style="background:var(--trace)"></i>Measured spectrum</span><span><i style="background:var(--muted)"></i>Exact multiple of 50.000 Hz</span><span><i style="background:var(--gold)"></i>Multiple of the official grid frequency</span></div>
+    <p class="cap" id="zoomCap">The grid rarely runs at exactly 50 Hz. If it runs at 50.13 Hz, the 2nd harmonic sits at 100.26 Hz, the 6th at 300.78 Hz: the gap from the tick grows with the harmonic number. A real mains line sits on the gold marker, not the grey one.</p>
+  </div>
+
+  <div class="card" id="combCard">
+    <h2><span>Spectrum 30–420 Hz</span><span id="combLbl">gold ticks: 50 Hz and its multiples</span></h2>
+    <canvas id="comb" aria-label="Low-frequency spectrum with 50 Hz harmonic markers"></canvas>
+  </div>
+  <footer>Works in GB (compares with Elexon's GB grid data) · Browser mic → AudioWorklet (mixes each harmonic of 50 Hz down to 0 Hz, 10 samples/s) → sliding DFT, harmonics combined by strength · grid via server.py /grid · hum.html</footer>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const LOCAL = location.port === "8790";   // served by server.py on the Mac (ESP32 + diagnostics available)
+const TAU = 2*Math.PI, BBR = 10, KS = [1,2,3,4,5,6], NK = KS.length, NB = 240, SPAN = 0.3, M = 241;
+let ctx, node, analyser, wall0 = null, mode = 0, WIN = 10, RANGE = 5;
+let bb = [];                 // {t, z:Float64Array(2*NK), gp}  gp = ∫(grid−50)dt, for the grid-referenced dial
+let track = [];              // {ms, hz, snr, ok}
+let cols = [];               // {ms, db:Float32Array(M)}
+let gridSeries = [], dialHist = [], refGrid = true, level = null, curSnr = null, mainsHat = null;
+let hs = new Float64Array(NK).fill(2);   // running per-harmonic strength at the combined peak
+let source = "mic", camStream = null, video = null, camCv = null, camCtx = null, camRing = [], camTimes = [], camPow = null, camKappa = null,
+    camFrames = 0, camFlip = false, camHs = [2, 2], camHist = [], camInfo = {};
+let dioFlat = 0, dioES = null, dioRing = new Float32Array(16384), dioW = 0, dioN = 0, dioV = null, dioPow = null, dioSpecAt = 0, dioState = "offline";
+let fold = {acc:new Float64Array(NB), acc2:new Float64Array(NB), cnt:new Float64Array(NB)};
+const hex = c => { c=c.replace("#",""); return [0,2,4].map(i=>parseInt(c.slice(i,i+2),16)); };
+const median = a => { const s=Float64Array.from(a).sort(); return s.length ? s[s.length>>1] : NaN; };
+const gridNow = () => gridSeries.length ? gridSeries[gridSeries.length-1][1] : null;
+function gridAt(ms){ const g = gridSeries; if (!g.length || ms < g[0][0] || ms > g[g.length-1][0]) return null;
+  let i = 1; while (g[i][0] < ms) i++; const [a,fa] = g[i-1], [b,fb] = g[i]; return b===a ? fa : fa + (fb-fa)*(ms-a)/(b-a); }
+function fit(c){ const r=c.getBoundingClientRect(), p=devicePixelRatio||1;
+  if (c.width!==Math.round(r.width*p) || c.height!==Math.round(r.height*p)) { c.width=Math.round(r.width*p); c.height=Math.round(r.height*p); }
+  const x=c.getContext("2d"); x.setTransform(p,0,0,p,0,0); return [x,r.width,r.height]; }
+function status(cls, txt){ const s=$("status"); s.className="pill "+cls; s.lastElementChild.textContent=txt; }
+const fmtT = ms => new Date(ms).toLocaleTimeString([], {hour:"2-digit", minute:"2-digit", second: RANGE<=5 ? "2-digit" : undefined});
+
+// ---------- audio worklet: one complex mixer per harmonic of 50 Hz, plus the cycle stacker ----------
+const WORKLET = `
+const KS=${JSON.stringify(KS)}, NK=KS.length, NB=${NB};
+class Demod extends AudioWorkletProcessor{
+  constructor(){ super(); this.D=Math.round(sampleRate/${BBR}); this.n=0; this.total=0; this.blocks=0;
+    this.acc=new Float64Array(2*NK); this.rr=new Float64Array(NK).fill(1); this.ri=new Float64Array(NK);
+    this.sc=KS.map(k=>Math.cos(2*Math.PI*50*k/sampleRate)); this.ss=KS.map(k=>-Math.sin(2*Math.PI*50*k/sampleRate));
+    this.mains=0; this.fph=0; this.newFold(); this.sq=0; this.sn=0;
+    this.port.onmessage=e=>{ if('mains' in e.data) this.mains=e.data.mains; }; }
+  newFold(){ this.fa=new Float64Array(NB); this.fa2=new Float64Array(NB); this.fc=new Float64Array(NB); }
+  process(inp){ const x=inp[0]&&inp[0][0]; if(!x) return true;
+    const dh=this.mains/sampleRate, rr=this.rr, ri=this.ri, acc=this.acc, sc=this.sc, ss=this.ss;
+    for(let i=0;i<x.length;i++){ const v=x[i];
+      for(let j=0;j<NK;j++){ acc[2*j]+=v*rr[j]; acc[2*j+1]+=v*ri[j];
+        const a=rr[j]*sc[j]-ri[j]*ss[j]; ri[j]=rr[j]*ss[j]+ri[j]*sc[j]; rr[j]=a; }
+      if(dh>0){ const b=(this.fph*NB)|0; this.fa[b]+=v; this.fa2[b]+=v*v; this.fc[b]++; this.fph+=dh; if(this.fph>=1) this.fph-=1; }
+      this.sq+=v*v; this.sn++; this.total++;
+      if(++this.n>=this.D){
+        for(let j=0;j<NK;j++){ const m=Math.hypot(rr[j],ri[j]); rr[j]/=m; ri[j]/=m; }
+        this.port.postMessage({t:(this.total-this.D/2)/sampleRate, z:Float64Array.from(acc, a=>a/this.D)});
+        acc.fill(0); this.n=0;
+        if(++this.blocks%5===0){ this.port.postMessage({rms:Math.sqrt(this.sq/this.sn), fa:this.fa, fa2:this.fa2, fc:this.fc});
+          this.newFold(); this.sq=0; this.sn=0; }
+      } }
+    return true; } }
+registerProcessor('demod', Demod);`;
+
+async function start(){
+  if (source === "cam") return startCam();
+  if (source === "dio") return startDio();
+  if (ctx) return;
+  $("go").disabled = true; status("idle", "asking for mic…");
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:false, noiseSuppression:false, autoGainControl:false, channelCount:1}});
+    ctx = new AudioContext(); await ctx.resume();
+    await ctx.audioWorklet.addModule(URL.createObjectURL(new Blob([WORKLET], {type:"application/javascript"})));
+    const src = ctx.createMediaStreamSource(stream);
+    node = new AudioWorkletNode(ctx, "demod", {numberOfInputs:1, numberOfOutputs:1});
+    const mute = ctx.createGain(); mute.gain.value = 0; node.connect(mute).connect(ctx.destination);
+    analyser = ctx.createAnalyser(); analyser.fftSize = 32768; analyser.smoothingTimeConstant = 0.97;
+    src.connect(node); src.connect(analyser);
+    node.port.onmessage = onMsg;
+    $("srLbl").textContent = `${ctx.sampleRate/1000} kHz · ${stream.getAudioTracks()[0].label}`;
+    $("go").textContent = "Listening"; status("ok", "listening");
+  } catch (e) { status("bad", "mic blocked: " + e.message); $("go").disabled = false; }
+}
+function onMsg(e){
+  const d = e.data;
+  if (d.z){ if (source === "mic") pushBB(d.t, d.z, null); }
+  else { level = d.rms; if (source !== "mic") return;
+    for (let i=0;i<NB;i++){ fold.acc[i] = fold.acc[i]*0.94 + d.fa[i]; fold.acc2[i] = fold.acc2[i]*0.94 + d.fa2[i]; fold.cnt[i] = fold.cnt[i]*0.94 + d.fc[i]; } }
+}
+function pushBB(t, z, zf){
+  if (wall0 == null) wall0 = Date.now() - t*1000;
+  const prev = bb[bb.length-1], g = gridNow();
+  const gp = prev ? prev.gp + (g != null ? g - 50 : 0)*(t - prev.t) : 0;
+  bb.push({t, z, zf, gp}); while (bb.length && bb[0].t < t - 90) bb.shift();
+}
+function resetTrack(){ track = []; cols = []; dialHist = []; hs.fill(2); camHs = [2, 2]; mainsHat = null;
+  fold = {acc:new Float64Array(NB), acc2:new Float64Array(NB), cnt:new Float64Array(NB)}; }
+const zOf = (s, h) => source === "cam" ? (camFlip ? s.zf : [s.z[2], s.z[3]]) : [s.z[2*h], s.z[2*h+1]];
+
+// ---------- tracker: DFT of each harmonic on a shared mains-frequency axis, combined by strength ----------
+let lastTEnd = null;
+function doTrack(){
+  const verb = source === "mic" ? "listening" : "watching", running = source === "cam" ? !!camStream : source === "dio" ? !!dioES : !!ctx;
+  if (!bb.length){ if (running) status("ok", verb + " · waiting for signal"); return; }
+  const tEnd = bb[bb.length-1].t;
+  if (tEnd === lastTEnd) return; lastTEnd = tEnd;
+  if (tEnd - bb[0].t < WIN*0.97){ if (running) status("ok", `${verb} · first fix in ${Math.ceil(WIN - (tEnd - bb[0].t))} s`); return; }
+  let j0 = bb.length - 1; while (j0 > 0 && bb[j0-1].t >= tEnd - WIN) j0--;
+  const seg = bb.slice(j0), N = seg.length, w = seg.map(s => 0.5 - 0.5*Math.cos(TAU*(s.t - tEnd + WIN)/WIN));
+  const spectrum = (k, get) => { const pw = new Float64Array(M), zs = seg.map(get);
+    for (let m=0;m<M;m++){ const d = -SPAN + 2*SPAN*m/(M-1); let re=0, im=0;
+      for (let j=0;j<N;j++){ const a = -TAU*k*d*(seg[j].t - tEnd), c = Math.cos(a), s = Math.sin(a), zr = zs[j][0], zi = zs[j][1];
+        re += w[j]*(zr*c - zi*s); im += w[j]*(zr*s + zi*c); }
+      pw[m] = re*re + im*im; }
+    const md = median(pw); return md > 0 ? pw.map(v => v/md) : null; };
+  let use, norm = [];
+  if (source === "cam"){      // try both sensor readout directions, keep the one that carries the flicker
+    const a = spectrum(2, s => [s.z[2], s.z[3]]), b = spectrum(2, s => s.zf);
+    if (!a || !b){ status("ok", verb + " · no signal"); return; }
+    camHs[0] = 0.9*camHs[0] + 0.1*Math.max(...a); camHs[1] = 0.9*camHs[1] + 0.1*Math.max(...b);
+    camFlip = camHs[1] > camHs[0]; use = [1]; norm = [camFlip ? b : a];
+  } else {
+    use = [];
+    const evenOnly = source === "dio";   // ESP32 blocks arrive every 60 ms (16.7/s): odd multiples of 50 Hz pick up folded copies of the even ones
+    let cand = mode && !(evenOnly && mode % 2) ? [KS.indexOf(mode)] : KS.map((_,i)=>i);
+    if (evenOnly) cand = cand.filter(h => KS[h] % 2 === 0);
+    for (const h of cand){ const p = spectrum(KS[h], s => [s.z[2*h], s.z[2*h+1]]); if (p){ use.push(h); norm.push(p); } }
+    if (!use.length){ status("ok", verb + " · no signal (flat input)"); return; }
+  }
+  const single = source === "cam" || (mode && !(source === "dio" && mode % 2));
+  const wt = use.map(h => single ? 1 : Math.max(0.05, hs[h] - 1)), wsum = wt.reduce((a,b)=>a+b);
+  const comb = new Float64Array(M); norm.forEach((p,i) => { for (let m=0;m<M;m++) comb[m] += wt[i]*p[m]/wsum; });
+  const cm = median(comb); for (let m=0;m<M;m++) comb[m] /= cm;
+  let ip = 0; for (let m=1;m<M;m++) if (comb[m] > comb[ip]) ip = m;
+  let off = 0; if (ip>0 && ip<M-1){ const a=comb[ip-1], b=comb[ip], c=comb[ip+1]; off = 0.5*(a-c)/(a-2*b+c); }
+  const hz = 50 - SPAN + 2*SPAN*(ip+off)/(M-1), snr = comb[ip], ms = wall0 + (tEnd - WIN/2)*1000;
+  if (!single) use.forEach((h,i) => { const v = 0.95*hs[h] + 0.05*norm[i][ip]; hs[h] = Number.isFinite(v) ? Math.min(v, 1e6) : 2; });
+  const tol = 0.012*Math.pow(20/WIN, 0.8);
+  const recent = track.slice(-8).map(p => p.hz).concat([hz]);
+  const ok = snr >= (single ? 6 : 5) && Math.abs(hz - median(recent)) < tol;
+  track.push({ms, hz, snr, ok}); while (track.length && track[0].ms < Date.now() - 16*60e3) track.shift();
+  cols.push({ms, db: Float32Array.from(comb, v => 10*Math.log10(v))}); while (cols.length && cols[0].ms < Date.now() - 16*60e3) cols.shift();
+  curSnr = snr; fallDirty = true;
+  if (ok){ mainsHat = hz; if (node) node.port.postMessage({mains: hz}); }
+  status("ok", `${verb} · ${ok ? (source === "mic" ? "hum locked" : "flicker locked") : "searching"}`);
+}
+setInterval(doTrack, 500);
+
+// ---------- per-harmonic zoom spectra (from the mixed-down signal, so gaps between ESP32 blocks don't matter) ----------
+const ZSPAN = 2, ZM = 201; let zoomSpec = null;
+function doZoom(){
+  if (source === "cam" || bb.length < 20){ zoomSpec = null; return; }
+  const tEnd = bb[bb.length-1].t, Wz = Math.min(20, tEnd - bb[0].t); if (Wz < 4) return;
+  let j0 = bb.length - 1; while (j0 > 0 && bb[j0-1].t >= tEnd - Wz) j0--;
+  const seg = bb.slice(j0), N = seg.length, w = seg.map(s => 0.5 - 0.5*Math.cos(TAU*(s.t - tEnd + Wz)/Wz));
+  zoomSpec = KS.map((k, h) => { const pw = new Float64Array(ZM);
+    for (let m=0;m<ZM;m++){ const d = -ZSPAN + 2*ZSPAN*m/(ZM-1); let re=0, im=0;
+      for (let j=0;j<N;j++){ const a = -TAU*d*(seg[j].t - tEnd), c = Math.cos(a), sn = Math.sin(a), zr = seg[j].z[2*h], zi = seg[j].z[2*h+1];
+        re += w[j]*(zr*c - zi*sn); im += w[j]*(zr*sn + zi*c); }
+      pw[m] = re*re + im*im; }
+    const md = median(pw); return md > 0 ? Float64Array.from(pw, v => 10*Math.log10(v/md)) : null; });
+  zoomSpec.win = Wz;
+}
+setInterval(doZoom, 1000);
+function drawZoom(){
+  const [x,W,H] = fit($("zoom")); x.clearRect(0,0,W,H);
+  const ks = source === "dio" ? KS.filter(k => k % 2 === 0) : KS;
+  const cols = W < 600 ? 3 : ks.length, rows = Math.ceil(ks.length/cols), gap = 10, pw_ = (W - gap*(cols-1))/cols, ph_ = (H - gap*(rows-1))/rows;
+  const g = gridNow();
+  ks.forEach((k, pi) => { const h = KS.indexOf(k);
+    const ox = (pi % cols)*(pw_ + gap), oy = Math.floor(pi/cols)*(ph_ + gap), T = 18, B = 18, L = 4, Rr = 4;
+    const X = d => ox + L + (d + ZSPAN)/(2*ZSPAN)*(pw_ - L - Rr), y0 = oy + T, y1 = oy + ph_ - B;
+    x.strokeStyle = css("--grid"); x.lineWidth = 1; x.strokeRect(ox+.5, oy+.5, pw_-1, ph_-1);
+    x.fillStyle = css("--ink"); x.font = "600 11px 'Chivo Mono', monospace"; x.fillText(`${50*k} Hz`, ox+8, oy+13);
+    x.fillStyle = css("--muted"); x.font = "10px 'Chivo Mono', monospace";
+    for (const d of [-2,-1,0,1,2]){ const t = (50*k + d).toFixed(0); x.fillText(t, X(d) - t.length*3, oy + ph_ - 5); }
+    x.strokeStyle = css("--muted"); x.setLineDash([3,3]); x.beginPath(); x.moveTo(X(0)+.5, y0); x.lineTo(X(0)+.5, y1); x.stroke(); x.setLineDash([]);
+    if (g != null){ const dg = k*(g - 50); if (Math.abs(dg) < ZSPAN){ x.strokeStyle = css("--gold"); x.lineWidth = 2; x.beginPath(); x.moveTo(X(dg), y0); x.lineTo(X(dg), y1); x.stroke(); } }
+    const sp = zoomSpec && zoomSpec[h]; if (!sp) return;
+    let top = 10; for (const v of sp) top = Math.max(top, v);
+    const Y = v => y1 - Math.max(0, v)/top*(y1 - y0);
+    x.fillStyle = css("--band"); x.beginPath(); x.moveTo(X(-ZSPAN), y1);
+    for (let m=0;m<ZM;m++) x.lineTo(X(-ZSPAN + 2*ZSPAN*m/(ZM-1)), Y(sp[m])); x.lineTo(X(ZSPAN), y1); x.fill();
+    x.strokeStyle = css("--trace"); x.lineWidth = 1.5; x.beginPath();
+    for (let m=0;m<ZM;m++){ const px = X(-ZSPAN + 2*ZSPAN*m/(ZM-1)), py = Y(sp[m]); m ? x.lineTo(px,py) : x.moveTo(px,py); } x.stroke();
+    let ip = 0; for (let m=1;m<ZM;m++) if (sp[m] > sp[ip]) ip = m;
+    const dpk = -ZSPAN + 2*ZSPAN*ip/(ZM-1);
+    x.textAlign = "end"; x.font = "600 10px 'Chivo Mono', monospace";
+    if (sp[ip] >= 10){ x.fillStyle = css("--ink"); x.fillText(`${(50*k + dpk).toFixed(2)} Hz`, ox + pw_ - 6, oy + 13);
+      x.fillStyle = css("--muted"); x.font = "10px 'Chivo Mono', monospace"; x.fillText(`+${sp[ip].toFixed(0)} dB`, ox + pw_ - 6, oy + 26); }
+    else { x.fillStyle = css("--muted"); x.fillText("no line", ox + pw_ - 6, oy + 13); }
+    x.textAlign = "start";
+  });
+}
+
+// ---------- phasor dial ----------
+function primaryH(){ if (source === "cam") return 1; if (mode) return KS.indexOf(mode); let b = 0; for (let i=1;i<NK;i++) if (hs[i] > hs[b]) b = i; return b; }
+function drawDial(){
+  const [x,W,H] = fit($("dial")); x.clearRect(0,0,W,H);
+  const cx = W/2, cy = H/2 - 10, R = Math.min(W,H)/2 - 34, h = primaryH(), k = KS[h];
+  x.strokeStyle = css("--grid"); x.lineWidth = 2; x.beginPath(); x.arc(cx,cy,R,0,TAU); x.stroke();
+  x.fillStyle = css("--muted"); x.font = "10px 'Chivo Mono', monospace"; x.textAlign = "center";
+  for (let q=0;q<12;q++){ const a = q/12*TAU - Math.PI/2, r1 = q%3 ? R-5 : R-10;
+    x.beginPath(); x.moveTo(cx+Math.cos(a)*r1, cy+Math.sin(a)*r1); x.lineTo(cx+Math.cos(a)*R, cy+Math.sin(a)*R); x.stroke(); }
+  x.fillText("0°", cx, cy-R-8); x.fillText(source === "cam" ? "100 Hz flicker" : `${50*k} Hz line`, cx, cy+R+18);
+  let msg = source === "cam" ? "waiting for flicker" : "waiting for sound";
+  const tN = bb.length ? bb[bb.length-1].t : 0, seg = bb.filter(s => s.t > tN - 4);
+  if (bb.length && tN - bb[0].t >= 4){
+    if (refGrid ? gridNow() != null : mainsHat != null){
+      let sr=0, si=0, sa=0;
+      for (const s of seg){ const [re, im] = zOf(s, h);
+        const a = refGrid ? -TAU*k*s.gp : -TAU*k*(mainsHat-50)*(s.t - tN);
+        const c=Math.cos(a), sn=Math.sin(a); sr += re*c - im*sn; si += re*sn + im*c; sa += Math.hypot(re, im); }
+      const phi = Math.atan2(si, sr), coh = Math.hypot(sr, si)/sa;
+      const last = dialHist[dialHist.length-1];
+      if (!last || tN - last[0] >= 0.1) dialHist.push([tN, phi, coh]);
+      while (dialHist.length && dialHist[0][0] < tN - 10) dialHist.shift();
+      for (const [t, p, c] of dialHist){ const age = tN - t, a = p - Math.PI/2, rr = (R-18)*(0.2+0.8*c);
+        x.globalAlpha = 0.5*(1-age/10); x.fillStyle = css("--trace");
+        x.beginPath(); x.arc(cx+Math.cos(a)*rr, cy+Math.sin(a)*rr, 3, 0, TAU); x.fill(); }
+      x.globalAlpha = 1;
+      const a = phi - Math.PI/2, L = (R-18)*(0.2+0.8*coh);
+      x.strokeStyle = css("--hum"); x.lineWidth = 3.5; x.lineCap = "round";
+      x.beginPath(); x.moveTo(cx,cy); x.lineTo(cx+Math.cos(a)*L, cy+Math.sin(a)*L); x.stroke();
+      x.fillStyle = css("--hum"); x.beginPath(); x.arc(cx,cy,5,0,TAU); x.fill();
+      msg = `steadiness ${(coh*100).toFixed(0)}%`;
+    } else msg = refGrid ? "waiting for grid data" : "waiting for a hum fix";
+  }
+  x.fillStyle = css("--ink"); x.font = "600 13px 'Chivo Mono', monospace"; x.fillText(msg, cx, H-6); x.textAlign = "start";
+}
+
+// ---------- averaged mains cycle with harmonic fit and noise band ----------
+let foldScale = 0;
+function drawFold(){
+  const [x,W,H] = fit($("fold")); x.clearRect(0,0,W,H);
+  const L = 50, B = 22, T = 8, ph = H - B - T, mid = T + ph/2;
+  let tot = 0; for (let i=0;i<NB;i++) tot += fold.cnt[i];
+  if (!mainsHat || tot < NB*50){ x.fillStyle = css("--muted"); x.font = "12px 'Chivo Mono', monospace"; x.textAlign = "center";
+    x.fillText("waiting for a hum lock", W/2, mid); x.textAlign = "start"; $("foldLbl").textContent = " "; return; }
+  const mean = new Float64Array(NB), se = new Float64Array(NB);
+  for (let i=0;i<NB;i++){ const c = Math.max(1, fold.cnt[i]); mean[i] = fold.acc[i]/c; se[i] = Math.sqrt(Math.max(0, fold.acc2[i]/c - mean[i]**2)/c); }
+  const avg = mean.reduce((a,b)=>a+b)/NB; for (let i=0;i<NB;i++) mean[i] -= avg;
+  const fitc = new Float64Array(NB);                    // harmonics 1..8 of the mains frequency
+  for (let hh=1; hh<=8; hh++){ let cr=0, ci=0;
+    for (let i=0;i<NB;i++){ const a = TAU*hh*i/NB; cr += mean[i]*Math.cos(a); ci -= mean[i]*Math.sin(a); }
+    cr *= 2/NB; ci *= 2/NB; for (let i=0;i<NB;i++){ const a = TAU*hh*i/NB; fitc[i] += cr*Math.cos(a) - ci*Math.sin(a); } }
+  const noise = median(se), band = 2*noise;
+  const fitRms = Math.sqrt(fitc.reduce((a,b)=>a+b*b,0)/NB), fitNoise = noise*Math.sqrt(16/NB);
+  let amp = band; for (let i=0;i<NB;i++) amp = Math.max(amp, Math.abs(mean[i]), Math.abs(fitc[i]));
+  foldScale = foldScale ? foldScale*0.9 + amp*1.15*0.1 : amp*1.15;
+  const Y = v => mid - v/foldScale*ph/2, X = j => L + j/(2*NB)*(W - L - 8);
+  // axes
+  x.strokeStyle = css("--grid"); x.lineWidth = 1; x.fillStyle = css("--muted"); x.font = "10px 'Chivo Mono', monospace";
+  const db = v => (20*Math.log10(Math.abs(v)+1e-12)).toFixed(0);
+  for (const v of [-foldScale*0.8, 0, foldScale*0.8]){ const yy = Math.round(Y(v))+.5; x.beginPath(); x.moveTo(L,yy); x.lineTo(W-8,yy); x.stroke();
+    x.fillText(v === 0 ? "0" : (v>0?"+":"−") + db(v) + " dB", 2, yy+3); }
+  const T_ms = 1000/mainsHat; for (let q=0;q<=4;q++){ const px = X(q*NB/2); x.fillText((q*T_ms/2).toFixed(0)+" ms", Math.min(W-34, Math.max(L-6, px-12)), H-6); }
+  x.strokeStyle = css("--grid"); x.setLineDash([3,4]); x.beginPath(); x.moveTo(X(NB)+.5, T); x.lineTo(X(NB)+.5, T+ph); x.stroke(); x.setLineDash([]);
+  // noise band
+  x.fillStyle = css("--band"); x.fillRect(L, Y(band), W - L - 8, Y(-band) - Y(band));
+  // average (blue, thin)
+  x.strokeStyle = css("--trace"); x.globalAlpha = 0.55; x.lineWidth = 1.2; x.beginPath();
+  for (let j=0;j<=2*NB;j++){ const px = X(j), py = Y(mean[j%NB]); j ? x.lineTo(px,py) : x.moveTo(px,py); } x.stroke(); x.globalAlpha = 1;
+  // mains hum fit (yellow, bold, with a soft glow)
+  x.save(); x.shadowColor = css("--hum"); x.shadowBlur = 8;
+  x.strokeStyle = css("--hum"); x.lineWidth = 3.5; x.lineJoin = "round"; x.beginPath();
+  for (let j=0;j<=2*NB;j++){ const px = X(j), py = Y(fitc[j%NB]); j ? x.lineTo(px,py) : x.moveTo(px,py); } x.stroke(); x.restore();
+  const ratio = fitRms/fitNoise;
+  $("foldLbl").textContent = `${mainsHat.toFixed(3)} Hz · ~${Math.round(mainsHat*8)} cycles · hum ${ratio.toFixed(1)}× noise`;
+  x.fillStyle = ratio > 3 ? css("--ok") : css("--muted"); x.font = "600 11px 'Chivo Mono', monospace"; x.textAlign = "end";
+  x.fillText(ratio > 3 ? "hum clearly above noise" : ratio > 1.5 ? "hum faint" : "no clear hum", W-10, T+12); x.textAlign = "start";
+}
+
+// ---------- frequency chart + residual strip ----------
+let hover = null;
+$("enf").addEventListener("pointermove", e => { hover = e.clientX - $("enf").getBoundingClientRect().left; });
+$("enf").addEventListener("pointerleave", () => { hover = null; });
+function timeAxis(x, X, t0, now, H){
+  const step = RANGE <= 2 ? 15e3 : RANGE <= 5 ? 60e3 : 120e3;
+  x.fillStyle = css("--muted"); x.font = "10px 'Chivo Mono', monospace";
+  for (let m = Math.ceil(t0/step)*step; m <= now; m += step){ const px = X(m); x.strokeStyle = css("--grid"); x.lineWidth = 1;
+    x.beginPath(); x.moveTo(px+.5, 6); x.lineTo(px+.5, H-22); x.stroke(); x.fillText(fmtT(m), px - (RANGE<=5?22:14), H-6); }
+}
+function drawEnf(){
+  const [x,W,H] = fit($("enf")); x.clearRect(0,0,W,H);
+  const now = Date.now(), t0 = now - RANGE*60e3, L = 62, Rr = 12, T = 10, B = 24;
+  const mic = track.filter(p => p.ms >= t0), grid = gridSeries.filter(p => p[0] >= t0 - 15e3);
+  const all = mic.filter(p=>p.ok).map(p=>p.hz).concat(grid.map(p=>p[1]));
+  let lo = all.length ? Math.min(...all) : 49.9, hi = all.length ? Math.max(...all) : 50.1;
+  const mid = (lo+hi)/2, span = Math.max(0.05, (hi-lo)*1.3); lo = mid - span/2; hi = mid + span/2;
+  const X = t => L + (t - t0)/(now - t0)*(W - L - Rr), Y = v => T + (hi - v)/(hi - lo)*(H - T - B);
+  timeAxis(x, X, t0, now, H);
+  x.strokeStyle = css("--grid"); x.lineWidth = 1; x.fillStyle = css("--muted"); x.font = "10px 'Chivo Mono', monospace";
+  const step = span > 0.2 ? 0.05 : span > 0.1 ? 0.02 : span > 0.05 ? 0.01 : 0.005;
+  for (let v = Math.ceil(lo/step)*step; v <= hi; v += step){ const yy = Math.round(Y(v))+.5;
+    x.beginPath(); x.moveTo(L,yy); x.lineTo(W-Rr,yy); x.stroke(); x.fillText(v.toFixed(step<0.01?3:2)+" Hz", 2, yy+3); }
+  x.save(); x.beginPath(); x.rect(L, T, W-L-Rr, H-T-B); x.clip();
+  x.fillStyle = css("--muted"); x.globalAlpha = 0.35;
+  for (const p of mic) if (!p.ok){ x.beginPath(); x.arc(X(p.ms), Y(Math.max(lo, Math.min(hi, p.hz))), 2, 0, TAU); x.fill(); }
+  x.globalAlpha = 1;
+  // grid: line + dots
+  x.strokeStyle = css("--gold"); x.lineWidth = 2.5; x.beginPath(); grid.forEach((p,i) => i ? x.lineTo(X(p[0]),Y(p[1])) : x.moveTo(X(p[0]),Y(p[1]))); x.stroke();
+  // mic: connected line through accepted points, broken across gaps
+  x.strokeStyle = css("--trace"); x.lineWidth = 2; x.beginPath(); let prev = null;
+  for (const p of mic){ if (!p.ok) continue; if (prev && p.ms - prev.ms < 3000) x.lineTo(X(p.ms), Y(p.hz)); else x.moveTo(X(p.ms), Y(p.hz)); prev = p; }
+  x.stroke();
+  x.fillStyle = css("--gold"); x.strokeStyle = css("--panel"); x.lineWidth = 2;
+  for (const p of grid){ x.beginPath(); x.arc(X(p[0]),Y(p[1]),4.5,0,TAU); x.fill(); x.stroke(); }
+  x.restore();
+  if (hover != null && hover >= L){
+    const tm = t0 + (hover - L)/(W - L - Rr)*(now - t0);
+    x.strokeStyle = css("--muted"); x.lineWidth = 1; x.beginPath(); x.moveTo(hover, T); x.lineTo(hover, H-B); x.stroke();
+    const nm = mic.filter(p=>p.ok).reduce((b,p) => !b || Math.abs(p.ms-tm) < Math.abs(b.ms-tm) ? p : b, null), g = gridAt(tm), tip = $("tip");
+    tip.hidden = false;
+    const mh = nm && Math.abs(nm.ms-tm) < 2e3 ? nm.hz : null;
+    tip.innerHTML = new Date(tm).toLocaleTimeString() + "<br>Mic: " + (mh != null ? mh.toFixed(3)+" Hz" : "–") +
+      "<br>Grid: " + (g != null ? g.toFixed(3)+" Hz" : "–") + (mh != null && g != null ? `<br>Diff: ${((mh-g)*1000).toFixed(1)} mHz` : "");
+    tip.style.left = Math.min(hover + 12, W - 160) + "px"; tip.style.top = "12px";
+  } else $("tip").hidden = true;
+  drawResid(t0, now, mic);
+}
+function drawResid(t0, now, mic){
+  const [x,W,H] = fit($("resid")); x.clearRect(0,0,W,H);
+  const L = 62, Rr = 12, T = 6, B = 22, lim = 40;
+  const X = t => L + (t - t0)/(now - t0)*(W - L - Rr), Y = v => T + (lim - v)/(2*lim)*(H - T - B);
+  timeAxis(x, X, t0, now, H);
+  x.fillStyle = css("--band"); x.fillRect(L, Y(10), W-L-Rr, Y(-10)-Y(10));
+  x.strokeStyle = css("--muted"); x.lineWidth = 1; x.beginPath(); x.moveTo(L, Math.round(Y(0))+.5); x.lineTo(W-Rr, Math.round(Y(0))+.5); x.stroke();
+  x.fillStyle = css("--muted"); x.font = "10px 'Chivo Mono', monospace";
+  for (const v of [-30, 0, 30]) x.fillText((v>0?"+":"")+v+" mHz", 2, Y(v)+3);
+  x.fillStyle = css("--trace");
+  for (const p of mic){ if (!p.ok) continue; const g = gridAt(p.ms); if (g == null) continue;
+    const d = Math.max(-lim, Math.min(lim, (p.hz - g)*1000)); x.beginPath(); x.arc(X(p.ms), Y(d), 2.2, 0, TAU); x.fill(); }
+  const g1 = gridSeries.length ? gridSeries[gridSeries.length-1][0] : null;
+  if (g1 && g1 < now){ x.fillStyle = css("--band"); x.fillRect(Math.max(L, X(g1)), T, W-Rr-Math.max(L, X(g1)), H-T-B);
+    x.fillStyle = css("--muted"); x.textAlign = "center"; x.fillText("grid data not yet published", (Math.max(L, X(g1)) + W - Rr)/2, T+12); x.textAlign = "start"; }
+}
+
+// ---------- zoomed spectrogram (rendered to an offscreen image) ----------
+let fallDirty = true; const fallImg = document.createElement("canvas");
+function buildFall(t0, now){
+  const n = Math.max(1, Math.round((now - t0)/500)); fallImg.width = n; fallImg.height = M;
+  const g = fallImg.getContext("2d"), img = g.createImageData(n, M), [r0,g0,b0] = hex(css("--bg")), [r1,g1,b1] = hex(css("--trace"));
+  for (const c of cols){ const cx = Math.round((c.ms - t0)/500); if (cx < 0 || cx >= n) continue;
+    let top = 12; for (const v of c.db) if (v > top) top = v;          // scale each column to its own peak so strong signals stay a thin line
+    for (let m=0;m<M;m++){ const u = Math.pow(Math.max(0, Math.min(1, c.db[m]/top)), top > 12 ? 3 : 1.4), o = ((M-1-m)*n + cx)*4;
+      img.data[o] = r0+(r1-r0)*u; img.data[o+1] = g0+(g1-g0)*u; img.data[o+2] = b0+(b1-b0)*u; img.data[o+3] = 255; } }
+  // fill gaps between columns by carrying the last column forward
+  for (let m=0;m<M;m++){ let last = null; for (let cx=0; cx<n; cx++){ const o = (m*n + cx)*4;
+    if (img.data[o+3]) last = o; else if (last != null && cx - (last/4 - m*n) < 4){ img.data[o]=img.data[last]; img.data[o+1]=img.data[last+1]; img.data[o+2]=img.data[last+2]; img.data[o+3]=255; } } }
+  g.putImageData(img, 0, 0); fallDirty = false; fallImg.t0 = t0;
+}
+function drawFall(){
+  const [x,W,H] = fit($("fall")); x.fillStyle = css("--bg"); x.fillRect(0,0,W,H);
+  const now = Date.now(), t0 = now - RANGE*60e3, L = 62, Rr = 12, T = 6, B = 22;
+  if (fallDirty || fallImg.t0 == null || now - fallImg.t0 - RANGE*60e3 > 500) buildFall(t0, now);
+  const X = t => L + (t - t0)/(now - t0)*(W - L - Rr), Y = hz => T + (50 + SPAN - hz)/(2*SPAN)*(H - T - B);
+  x.imageSmoothingEnabled = true; x.drawImage(fallImg, X(fallImg.t0), T, (W - L - Rr), H - T - B);
+  x.strokeStyle = css("--gold"); x.lineWidth = 2; x.setLineDash([]); x.beginPath(); let f = true;
+  for (const p of gridSeries) if (p[0] >= t0 - 15e3){ f ? x.moveTo(X(p[0]), Y(p[1])) : x.lineTo(X(p[0]), Y(p[1])); f = false; }
+  x.globalAlpha = 0.8; x.stroke(); x.globalAlpha = 1;
+  x.fillStyle = css("--panel"); x.fillRect(0,0,L,H); x.fillRect(0,H-B,W,B); x.fillRect(W-Rr,0,Rr,H);
+  x.fillStyle = css("--muted"); x.font = "10px 'Chivo Mono', monospace";
+  for (let v = 49.8; v <= 50.21; v += 0.1) x.fillText(v.toFixed(2)+" Hz", 2, Y(v)+3);
+  const step = RANGE <= 2 ? 15e3 : RANGE <= 5 ? 60e3 : 120e3;
+  for (let m = Math.ceil(t0/step)*step; m <= now; m += step) x.fillText(fmtT(m), X(m) - (RANGE<=5?22:14), H-6);
+}
+
+// ---------- 30–420 Hz spectrum with 50 Hz family markers ----------
+let micSpec = null;
+function combSpec(){
+  if (source === "dio"){ if (!dioPow) return null;
+    return {spec: dioPow.map(v => 10*Math.log10(v + 1e-20)), bw: 8000/16384}; }
+  if (!analyser) return null;
+  if (!micSpec) micSpec = new Float32Array(analyser.frequencyBinCount);
+  analyser.getFloatFrequencyData(micSpec); return {spec: micSpec, bw: ctx.sampleRate/analyser.fftSize};
+}
+function fftPow(x){               // radix-2 power spectrum, Hann window
+  const n = x.length, re = new Float64Array(n), im = new Float64Array(n);
+  for (let i=0;i<n;i++) re[i] = x[i]*(0.5 - 0.5*Math.cos(TAU*i/(n-1)));
+  for (let i=1, j=0; i<n; i++){ let b = n >> 1; for (; j & b; b >>= 1) j ^= b; j ^= b; if (i < j){ [re[i],re[j]] = [re[j],re[i]]; } }
+  for (let len=2; len<=n; len<<=1){ const a = -TAU/len, wr = Math.cos(a), wi = Math.sin(a);
+    for (let i=0;i<n;i+=len){ let cr = 1, ci = 0;
+      for (let j=0;j<len/2;j++){ const ur = re[i+j], ui = im[i+j], vr = re[i+j+len/2]*cr - im[i+j+len/2]*ci, vi = re[i+j+len/2]*ci + im[i+j+len/2]*cr;
+        re[i+j] = ur+vr; im[i+j] = ui+vi; re[i+j+len/2] = ur-vr; im[i+j+len/2] = ui-vi; const t = cr*wr - ci*wi; ci = cr*wi + ci*wr; cr = t; } } }
+  const p = new Float64Array(n/2); for (let i=0;i<n/2;i++) p[i] = (re[i]**2 + im[i]**2)/n; return p;
+}
+function drawComb(){
+  const [x,W,H] = fit($("comb")); x.clearRect(0,0,W,H);
+  const L = 44, Rr = 10, T = 16, B = 22, f0 = 30, f1 = 420;
+  if (source === "cam") return;
+  const X = f => L + (f - f0)/(f1 - f0)*(W - L - Rr);
+  x.fillStyle = css("--muted"); x.font = "10px 'Chivo Mono', monospace";
+  for (let f = 50; f <= 400; f += 50) x.fillText(f+" Hz", X(f)-14, H-6);
+  const src = combSpec();
+  if (!src){ for (let q=1;q*50<f1;q++){ x.strokeStyle = css("--gold"); x.lineWidth = 2; x.beginPath(); x.moveTo(X(q*50), 0); x.lineTo(X(q*50), 10); x.stroke(); } return; }
+  const spec = src.spec, bw = src.bw, i0 = Math.floor(f0/bw), i1 = Math.ceil(f1/bw);
+  const seg = Array.from(spec.slice(i0, i1)).filter(Number.isFinite); if (!seg.length) return;
+  const hi = Math.max(...seg) + 3, lo = median(seg) - 12;
+  const Y = v => T + (hi - v)/(hi - lo)*(H - T - B);
+  x.strokeStyle = css("--grid"); x.lineWidth = 1;
+  for (let v = Math.ceil(lo/10)*10; v <= hi; v += 10){ const yy = Math.round(Y(v))+.5; x.beginPath(); x.moveTo(L,yy); x.lineTo(W-Rr,yy); x.stroke(); x.fillText(v+" dB", 2, yy+3); }
+  x.fillStyle = css("--band"); x.beginPath(); x.moveTo(X(i0*bw), H-B);
+  for (let i=i0;i<i1;i++) x.lineTo(X(i*bw), Y(Math.max(lo, spec[i]))); x.lineTo(X((i1-1)*bw), H-B); x.fill();
+  x.strokeStyle = css("--trace"); x.lineWidth = 1.5; x.beginPath();
+  for (let i=i0;i<i1;i++){ const px = X(i*bw), py = Y(Math.max(lo, spec[i])); i>i0 ? x.lineTo(px,py) : x.moveTo(px,py); } x.stroke();
+  const prom = [];
+  for (let q=1;q*50<f1;q++){ const f = q*50, a = Math.round((f-1.5)/bw), b = Math.round((f+1.5)/bw);
+    let pk = -Infinity; for (let i=a;i<=b;i++) pk = Math.max(pk, spec[i]);
+    const ref = []; for (let i=Math.round((f-10)/bw); i<=Math.round((f+10)/bw); i++) if (Math.abs(i*bw - f) > 3) ref.push(spec[i]);
+    const p = pk - median(ref); prom.push(p);
+    x.strokeStyle = css("--gold"); x.lineWidth = 2; x.beginPath(); x.moveTo(X(f), 0); x.lineTo(X(f), 10); x.stroke();
+    x.fillStyle = p > 6 ? css("--ink") : css("--muted"); x.textAlign = "center"; x.fillText((p>=0?"+":"")+p.toFixed(0), X(f), T+8); x.textAlign = "start"; }
+  $("combLbl").textContent = `gold ticks: 50 Hz and its multiples · number = dB above the neighbouring floor`;
+}
+
+// ---------- readouts & verdict ----------
+function readouts(){
+  if (source === "dio") $("lvl").textContent = dioV != null ? (dioV*3.3/4095).toFixed(2) + " V" : "–";
+  else if (source === "cam") $("lvl").textContent = camInfo.bright != null ? camInfo.bright.toFixed(0) + " / 255" : "–";
+  else if (level != null) $("lvl").textContent = (20*Math.log10(level + 1e-9)).toFixed(0) + " dBFS";
+  const now = Date.now(), lastOk = [...track].reverse().find(p => p.ok);
+  if (lastOk && now - lastOk.ms < WIN*1000 + 5e3){ $("micHz").textContent = lastOk.hz.toFixed(3)+" Hz"; $("micSub").textContent = `${WIN} s window, ${fmtT(lastOk.ms)}`; }
+  else { $("micHz").textContent = "–"; $("micSub").textContent = ctx ? "searching…" : " "; }
+  $("snr").textContent = curSnr ? (10*Math.log10(curSnr)).toFixed(1)+" dB" : "–";
+  const r60 = track.filter(p => p.ms > now - 60e3 - WIN*500), lockF = r60.length ? r60.filter(p=>p.ok).length/r60.length : 0;
+  $("lock").textContent = r60.length ? `${Math.round(lockF*100)}%` : "–";
+  const g = gridNow(); if (g != null){ $("gridHz").textContent = g.toFixed(3)+" Hz"; $("gridAt").textContent = "reading at " + new Date(gridSeries[gridSeries.length-1][0]).toLocaleTimeString(); }
+  const t0 = now - Math.max(3, RANGE)*60e3;
+  const pairs = track.filter(p => p.ok && p.ms >= t0).map(p => { const gv = gridAt(p.ms); return gv == null ? null : [p.hz, gv]; }).filter(Boolean);
+  let rms = null;
+  if (pairs.length >= 5){ rms = Math.sqrt(pairs.reduce((s,p)=>s+(p[0]-p[1])**2,0)/pairs.length)*1000;
+    $("rmsHz").textContent = rms.toFixed(1)+" mHz"; $("rmsSub").textContent = `${pairs.length} windows with grid data`; }
+  else { $("rmsHz").textContent = "–"; $("rmsSub").textContent = "needs grid overlap (~1 min delay)"; }
+  if (pairs.length >= 20){ const a = pairs.map(p=>p[0]), b = pairs.map(p=>p[1]), ma = a.reduce((s,v)=>s+v)/a.length, mb = b.reduce((s,v)=>s+v)/b.length;
+    let sab=0, saa=0, sbb=0; for (let i=0;i<a.length;i++){ sab+=(a[i]-ma)*(b[i]-mb); saa+=(a[i]-ma)**2; sbb+=(b[i]-mb)**2; }
+    const gsd = Math.sqrt(sbb/b.length)*1000;
+    if (gsd < 8){ $("matchR").textContent = "–"; $("matchN").textContent = `grid too steady to correlate (±${gsd.toFixed(1)} mHz); use the RMS`; }
+    else { $("matchR").textContent = "r = " + (sab/Math.sqrt(saa*sbb)).toFixed(2); $("matchN").textContent = `${pairs.length} windows · grid varied ±${gsd.toFixed(0)} mHz`; } }
+  else { $("matchR").textContent = "–"; $("matchN").textContent = `needs 20 windows (${pairs.length} so far)`; }
+  const ws = (mode || source === "cam") ? null : KS.map((k,i) => Math.max(0.05, hs[i]-1)), wt = ws ? ws.reduce((a,b)=>a+b) : 1;
+  $("wts").textContent = ws ? KS.map((k,i) => `${50*k}:${Math.round(ws[i]/wt*100)}%`).join("  ") : source === "cam" ? `100 Hz flicker · ${camFlip ? "bottom-up" : "top-down"} readout` : `${50*mode} Hz only`;
+  const v = $("verdict");
+  const what = source === "mic" ? "hum" : "lamp flicker", running = source === "cam" ? !!camStream : source === "dio" ? !!dioES : !!ctx;
+  if (source === "dio" && running && dioFlat && Date.now() - dioFlat > 1500){ v.className = "verdict bad";
+    $("vTxt").firstChild.textContent = `Photodiode reads a flat ${(dioV*3.3/4095).toFixed(2)} V`;
+    $("vSub").textContent = dioV < 20 ? "No signal at all: the sensor output wire to D34 is probably loose, or the module lost power. Re-seat the jumpers." : "The reading isn't moving: the sensor may be saturated (pinned at full scale) or covered. Aim it slightly away from the lamp."; }
+  else if (source === "dio" && running && dioState !== "live" && dioState !== "recording"){ v.className = "verdict bad"; $("vTxt").firstChild.textContent = "Photodiode not connected";
+    $("vSub").textContent = "The ESP32 isn't sending data. Plug it into USB; the server reconnects on its own within a few seconds."; }
+  else if (!running){ v.className = "verdict"; $("vTxt").firstChild.textContent = source === "cam" ? "Camera not started" : "Not listening yet";
+    $("vSub").textContent = source === "cam" ? "Press Start watching and allow the camera." : "Press Start listening and allow the microphone."; }
+  else if (pairs.length < 10){ v.className = "verdict"; $("vTxt").firstChild.textContent = "Listening, comparing with the grid…";
+    $("vSub").textContent = "The grid readings arrive about a minute late, so the comparison fills in behind real time."; }
+  else if (rms < 12 && lockF >= 0.4){ v.className = "verdict ok"; $("vTxt").firstChild.textContent = `The ${what} follows the GB grid`;
+    $("vSub").textContent = `Mains frequency from the ${({cam:"camera", dio:"photodiode", mic:"mic"})[source]} matches Elexon's to ${rms.toFixed(1)} mHz RMS. This is mains ${what}.`; }
+  else { v.className = "verdict bad"; $("vTxt").firstChild.textContent = "No clear grid lock";
+    $("vSub").textContent = source === "dio" ? "No steady flicker. Point the photodiode at a mains lamp (LED or fluorescent), close enough that the resting level moves well off 0 V."
+      : source === "cam" ? "No steady flicker bands. Point the camera at a plain surface lit by a mains LED or fluorescent lamp, hold still, and try brighter light (shorter exposure shows the bands better)."
+      : "The hum is too faint or masked by room noise. Move the phone or laptop near a charger, fridge or lamp, or keep the room quiet."; }
+}
+async function pollGrid(){
+  try {
+    if (LOCAL) gridSeries = await (await fetch("/grid")).json();
+    else {   // Elexon allows cross-origin requests, so the hosted page asks it directly
+      const iso = t => new Date(t).toISOString().slice(0, 19) + "Z", now = Date.now();
+      const r = await (await fetch(`https://data.elexon.co.uk/bmrs/api/v1/datasets/FREQ?measurementDateTimeFrom=${iso(now - 20*60e3)}&measurementDateTimeTo=${iso(now)}&format=json`)).json();
+      gridSeries = r.data.map(d => [Date.parse(d.measurementTime), d.frequency]).sort((a, b) => a[0] - b[0]);
+    }
+    fallDirty = true;
+  } catch {}
+}
+pollGrid(); setInterval(pollGrid, 15000); setInterval(readouts, 500);
+
+// ---------- camera: rolling-shutter bands → 100 Hz flicker phase per frame ----------
+async function startCam(){
+  if (camStream) return;
+  $("go").disabled = true; status("idle", "asking for camera…");
+  try {
+    try { camStream = await navigator.mediaDevices.getUserMedia({video:{width:{ideal:1280}, height:{ideal:720}, frameRate:{min:25, ideal:30}, facingMode:{ideal:"environment"}}}); }
+    catch { camStream = await navigator.mediaDevices.getUserMedia({video:{width:{ideal:1280}, height:{ideal:720}, frameRate:{ideal:30}, facingMode:{ideal:"environment"}}}); }
+    video = $("camVid"); video.srcObject = camStream; await video.play();
+    const tr = camStream.getVideoTracks()[0]; camInfo.exposure = "auto";
+    video.style.transform = (tr.getSettings().facingMode || "user") === "user" ? "scaleX(-1)" : "none"; $("camLbl").textContent = tr.label;
+    try { const cap = tr.getCapabilities ? tr.getCapabilities() : {};
+      if (cap.exposureMode && cap.exposureMode.includes("manual") && cap.exposureTime){
+        const et = Math.max(cap.exposureTime.min, Math.min(cap.exposureTime.max, 20));     // units of 100 µs
+        await tr.applyConstraints({advanced:[{exposureMode:"manual", exposureTime:et}]}); camInfo.exposure = `manual ${(et/10).toFixed(1)} ms`; } } catch {}
+    camCv = document.createElement("canvas"); camCtx = camCv.getContext("2d", {willReadFrequently:true});
+    camRing = []; camTimes = []; camPow = null; camKappa = null; camHist = [];
+    video.requestVideoFrameCallback(onFrame);
+    $("go").textContent = "Watching"; status("ok", "watching");
+  } catch (e) { camStream = null; status("bad", "camera blocked: " + e.message); $("go").disabled = false; }
+}
+function stopCam(){ if (camStream){ camStream.getTracks().forEach(t => t.stop()); camStream = null; } }
+function smoothTime(ts){       // frames are evenly spaced: fit a straight line to capture times to remove jitter
+  const n = ts.length; if (n < 10) return ts[n-1];
+  const d = []; for (let i=1;i<n;i++) d.push(ts[i]-ts[i-1]); const b0 = median(d);
+  const idx = ts.map(t => Math.round((t - ts[0])/b0));
+  let mi=0, mt=0; for (let i=0;i<n;i++){ mi += idx[i]; mt += ts[i]; } mi /= n; mt /= n;
+  let sxy=0, sxx=0; for (let i=0;i<n;i++){ sxy += (idx[i]-mi)*(ts[i]-mt); sxx += (idx[i]-mi)**2; }
+  const b = sxx ? sxy/sxx : b0; camInfo.fps = 1/b;
+  let e2 = 0; for (let i=0;i<n;i++) e2 += (ts[i] - (mt + b*(idx[i]-mi)))**2; camInfo.jitterMs = Math.sqrt(e2/n)*1000;
+  return mt + b*(idx[n-1]-mi);
+}
+function onFrame(now, meta){
+  if (!camStream) return;
+  video.requestVideoFrameCallback(onFrame);
+  if (source !== "cam") return;
+  const R = video.videoHeight, Wc = 32; if (!R) return;
+  if (camCv.height !== R){ camCv.width = Wc; camCv.height = R; camRing = []; camPow = null; camKappa = null; }
+  camCtx.imageSmoothingQuality = "high"; camCtx.drawImage(video, 0, 0, Wc, R);
+  const d = camCtx.getImageData(0, 0, Wc, R).data, p = new Float32Array(R);
+  for (let r=0;r<R;r++){ let s=0; for (let c=0;c<Wc;c++){ const o = (r*Wc+c)*4; s += 0.299*d[o] + 0.587*d[o+1] + 0.114*d[o+2]; } p[r] = s/Wc; }
+  camInfo.clock = meta.captureTime != null ? "captureTime" : meta.expectedDisplayTime != null ? "expectedDisplayTime" : "rAF now"; camInfo.rows = R;
+  camTimes.push((meta.captureTime ?? meta.expectedDisplayTime ?? now)/1000); if (camTimes.length > 150) camTimes.shift();
+  const t = smoothTime(camTimes);
+  camRing.push(p); if (camRing.length > 15) camRing.shift();
+  if (camRing.length < 15) return;
+  // remove the still scene: divide out the mean of the last 15 frames (bands drift, so they average away)
+  const mean = new Float32Array(R); for (const f of camRing) for (let r=0;r<R;r++) mean[r] += f[r]/15;
+  const q = new Float32Array(R); let bright = 0;
+  for (let r=0;r<R;r++){ q[r] = mean[r] > 3 ? (p[r] - mean[r])/mean[r] : 0; bright += mean[r]; }
+  camInfo.bright = bright/R;
+  const DS = Math.max(1, Math.round(R/180)), col = new Float32Array(Math.ceil(R/DS));
+  for (let r=0;r<R;r++) col[(r/DS)|0] += q[r]/DS;
+  camHist.push(col); if (camHist.length > 240) camHist.shift(); bandsDirty = true;
+  // band spacing: strongest spatial frequency, 1.5 bands per frame up to one band per 20 rows
+  if (camFrames++ % 3 === 0){ const K = 200, kmin = 1.5/R, kmax = 1/20; if (!camPow) camPow = new Float64Array(K);
+    for (let i=0;i<K;i++){ const kap = kmin*Math.pow(kmax/kmin, i/(K-1)); let re=0, im=0;
+      for (let r=0;r<R;r+=2){ const a = TAU*kap*r; re += q[r]*Math.cos(a); im -= q[r]*Math.sin(a); }
+      camPow[i] = 0.9*camPow[i] + 0.1*(re*re + im*im); }
+    let ib = 0; for (let i=1;i<K;i++) if (camPow[i] > camPow[ib]) ib = i;
+    camKappa = kmin*Math.pow(kmax/kmin, ib/(K-1)); camInfo.kpeak = camPow[ib]/median(camPow); camInfo.bands = ib > 2 && ib < K-3; }
+  if (!camKappa || !camInfo.bands) return;
+  let re = 0, im = 0;
+  for (let r=0;r<R;r++){ const a = TAU*camKappa*(r - R/2); re += q[r]*Math.cos(a); im -= q[r]*Math.sin(a); }
+  re *= 2/R; im *= 2/R; camInfo.depth = Math.hypot(re, im);
+  const a0 = -TAU*100*t, c0 = Math.cos(a0), s0 = Math.sin(a0), z = new Float64Array(2*NK);
+  z[2] = re*c0 - im*s0; z[3] = re*s0 + im*c0;                   // band phasor mixed down from 100 Hz
+  pushBB(t, z, [re*c0 + im*s0, re*s0 - im*c0]);                 // same, for a bottom-up sensor readout
+  if (mainsHat){                                                 // stack rows into one mains cycle
+    const tau = (camFlip ? -1 : 1)*camKappa/(2*mainsHat), dk = 0.9959;
+    for (let i=0;i<NB;i++){ fold.acc[i] *= dk; fold.acc2[i] *= dk; fold.cnt[i] *= dk; }
+    for (let r=0;r<R;r++){ let ph = (mainsHat*(t + (r - R/2)*tau)) % 1; if (ph < 0) ph += 1;
+      const b = (ph*NB)|0; fold.acc[b] += q[r]; fold.acc2[b] += q[r]*q[r]; fold.cnt[b] += 1; } }
+}
+let bandsDirty = false;
+function drawBands(){
+  if (source !== "cam" || !bandsDirty) return; bandsDirty = false;
+  const [x,W,H] = fit($("bands")); x.fillStyle = css("--bg"); x.fillRect(0,0,W,H);
+  const n = camHist.length; if (!n) return;
+  const rows = camHist[0].length, cw = W/240;
+  let amp = 1e-4; for (const c of camHist) for (const v of c) amp = Math.max(amp, Math.abs(v)); amp *= 0.6;
+  const [rb,gb,bb_] = hex(css("--bg")), [rn,gn,bn] = hex(css("--trace")), [rp,gp,bp] = hex(css("--gold"));
+  const rh = H/rows;
+  camHist.forEach((c, i) => { const px = W - (n - i)*cw;
+    for (let r=0;r<rows;r++){ const u = Math.max(-1, Math.min(1, c[r]/amp)), [tr,tg,tb] = u > 0 ? [rp,gp,bp] : [rn,gn,bn], a = Math.abs(u);
+      x.fillStyle = `rgb(${rb+(tr-rb)*a|0},${gb+(tg-gb)*a|0},${bb_+(tb-bb_)*a|0})`; x.fillRect(px, r*rh, cw+0.6, rh+0.6); } });
+  $("ciFps").textContent = camInfo.fps ? camInfo.fps.toFixed(2)+" fps" : "–";
+  $("ciBand").textContent = camKappa && camInfo.bands ? (1/camKappa).toFixed(0)+" rows" : "no bands found";
+  $("ciRow").textContent = camKappa ? (camKappa/(2*(mainsHat || 50))*1e6).toFixed(1)+" µs/row" : "–";
+  $("ciDepth").textContent = camInfo.depth != null ? (camInfo.depth*100).toFixed(2)+" %" : "–";
+  $("ciExp").textContent = camInfo.exposure || "–";
+  $("ciDir").textContent = camFlip ? "bottom-up" : "top-down";
+}
+// ---------- photodiode: ESP32 8 kHz blocks over Server-Sent Events ----------
+function startDio(){
+  if (dioES) return;
+  dioES = new EventSource("/stream"); $("go").textContent = "Watching"; $("go").disabled = true;
+  dioES.onmessage = e => { const d = JSON.parse(e.data);
+    if (d.type === "state") dioState = d.state;
+    else if (d.type === "a"){ dioState = "live"; if (source === "dio") dioBlock(d.t, d.s, d.rate); } };
+  dioES.onerror = () => { dioState = "offline"; };
+}
+function stopDio(){ if (dioES){ dioES.close(); dioES = null; } dioState = "offline"; }
+function dioBlock(tus, s, rate){
+  const n = s.length, t0 = tus/1e6, dt = 1/rate; let avg = 0, lo = Infinity, hi = -Infinity; for (const v of s){ avg += v; lo = Math.min(lo, v); hi = Math.max(hi, v); } avg /= n; dioV = avg;
+  dioFlat = hi - lo < 2 ? (dioFlat || Date.now()) : 0;
+  const z = new Float64Array(2*NK);
+  for (let j=0;j<NK;j++){ const f = 50*KS[j]; let re = 0, im = 0;
+    for (let i=0;i<n;i++){ const a = TAU*((f*(t0 + i*dt)) % 1), v = (s[i] - avg)/4095; re += v*Math.cos(a); im -= v*Math.sin(a); }
+    z[2*j] = re/n; z[2*j+1] = im/n; }
+  pushBB(t0 + n*dt/2, z, null);
+  for (let i=0;i<n;i++){ dioRing[dioW] = (s[i] - avg)/4095; dioW = (dioW + 1) % dioRing.length; } dioN += n;
+  if (mainsHat){ const dk = Math.pow(0.94, n*dt/0.5);
+    for (let i=0;i<NB;i++){ fold.acc[i] *= dk; fold.acc2[i] *= dk; fold.cnt[i] *= dk; }
+    for (let i=0;i<n;i++){ let ph = (mainsHat*(t0 + i*dt)) % 1; if (ph < 0) ph += 1; const b = (ph*NB)|0, v = (s[i] - avg)/4095;
+      fold.acc[b] += v; fold.acc2[b] += v*v; fold.cnt[b] += 1; } }
+  const now = performance.now();
+  if (dioN >= dioRing.length && now - dioSpecAt > 500){ dioSpecAt = now;
+    const x = new Float32Array(dioRing.length); for (let i=0;i<x.length;i++) x[i] = dioRing[(dioW + i) % x.length];
+    const p = fftPow(x); if (!dioPow || dioPow.length !== p.length) dioPow = p; else for (let i=0;i<p.length;i++) dioPow[i] = 0.7*dioPow[i] + 0.3*p[i]; }
+}
+function setSource(src){
+  if (src === source) return;
+  source = src; bb = []; wall0 = null; resetTrack();
+  $("srcMic").setAttribute("aria-pressed", src === "mic"); $("srcCam").setAttribute("aria-pressed", src === "cam"); $("srcDio").setAttribute("aria-pressed", src === "dio");
+  $("camCard").hidden = src !== "cam"; $("combCard").hidden = src !== "mic"; $("zoomCard").hidden = src === "cam"; $("harmLbl").hidden = src === "cam";
+  $("subT").textContent = ({cam:"Camera · rolling-shutter flicker bands", dio:"ESP32 photodiode on GPIO34 · 8 kHz", mic:"Microphone · raw input, no voice processing"})[src];
+  $("enfLbl").textContent = "grid: Elexon BMRS, 15 s readings, ~1 min delay";
+  $("zoomCap").textContent = src === "dio"
+    ? "A lamp flickers at multiples of 100 Hz, so only those are shown. The grid rarely runs at exactly 50 Hz: at 50.13 Hz the flicker sits at 100.26, 200.52 and 300.78 Hz, and the gap from each tick grows with the harmonic. A real mains line sits on the gold marker, not the grey one."
+    : "The grid rarely runs at exactly 50 Hz. If it runs at 50.13 Hz, the 2nd harmonic sits at 100.26 Hz, the 6th at 300.78 Hz: the gap from the tick grows with the harmonic number. A real mains line sits on the gold marker, not the grey one.";
+  $("foldCap").textContent = (src === "mic" ? "The mic signal" : src === "cam" ? "Each camera row (read out at its own instant)" : "The photodiode's light signal") +
+    " is cut into 20 ms slices at the tracked mains frequency, and the slices are stacked. Noise averages out; the " + (src === "mic" ? "hum" : "flicker") +
+    " repeats every cycle, so it builds up. The yellow curve is the part that repeats at the grid frequency and its multiples. If it rises well outside the grey band, it's real.";
+  $("lgMic").textContent = ({cam:"Lamp flicker ÷ 2, from the camera", dio:"Lamp flicker, from the photodiode", mic:"Mic hum, converted to mains frequency"})[src];
+  if (src !== "cam") stopCam(); if (src !== "dio") stopDio();
+  const running = src === "cam" ? !!camStream : src === "dio" ? !!dioES : !!ctx;
+  $("go").disabled = running; $("go").textContent = running ? (src === "mic" ? "Listening" : "Watching") : (src === "mic" ? "Start listening" : "Start watching");
+  start();
+}
+$("srcMic").onclick = () => setSource("mic");
+$("srcCam").onclick = () => setSource("cam");
+$("srcDio").onclick = () => setSource("dio");
+if (location.hash === "#cam") setSource("cam");
+if (location.hash === "#dio" && LOCAL) setSource("dio");
+if (!LOCAL) $("srcDio").hidden = true;
+$("go").onclick = start;
+if (LOCAL) setInterval(() => { fetch("/diag", {method:"POST", body: JSON.stringify({source, camInfo, camKappa, camFlip, camHs, mainsHat, curSnr, bbN: bb.length,
+  hs: Array.from(hs), rms: $("rmsHz").textContent, r: $("matchR").textContent, dial: (() => { const b = bb[bb.length-1]; return b ? {t: b.t, gp: b.gp, z: Array.from(b.z).slice(0,6)} : null; })(), track: track.slice(-12).map(p => [Math.round(p.hz*1000)/1000, Math.round(p.snr*10)/10, p.ok]), grid: gridNow()})}).catch(() => {}); }, 2000);
+$("harm").onchange = () => { mode = +$("harm").value; resetTrack(); };
+$("win").onchange = () => { WIN = +$("win").value; resetTrack(); };
+$("range").onchange = () => { RANGE = +$("range").value; fallDirty = true; };
+$("refBtn").onclick = () => { refGrid = !refGrid; dialHist = [];
+  $("refBtn").textContent = refGrid ? "Reference: live grid" : "Reference: exact 50 Hz";
+  $("dialCap").textContent = refGrid
+    ? "Hum phase against a clock running at the official grid frequency. If the hum comes from the grid, the needle roughly holds still. Needle length shows how steady the phase is."
+    : "Hum phase against an exact 50 Hz clock (times the harmonic). The needle turns at the grid's offset from 50 Hz: clockwise when fast, anticlockwise when slow."; };
+(function loop(){ drawDial(); drawFold(); drawEnf(); drawFall(); drawComb(); drawBands(); drawZoom(); requestAnimationFrame(loop); })();
+</script>
+</body>
+</html>
