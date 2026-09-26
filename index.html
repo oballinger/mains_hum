@@ -215,10 +215,15 @@ async function start(){
   if (source === "dio") return startDio();
   if (ctx) return;
   $("go").disabled = true; status("idle", "asking for mic…");
+  // iOS Safari only lets audio start inside the tap itself, so create and resume the context before any await
+  ctx = new (window.AudioContext || window.webkitAudioContext)(); const resumed = ctx.resume();
+  let step = "microphone permission";
   try {
     const stream = await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:false, noiseSuppression:false, autoGainControl:false, channelCount:1}});
-    ctx = new AudioContext(); await ctx.resume();
-    await ctx.audioWorklet.addModule(URL.createObjectURL(new Blob([WORKLET], {type:"application/javascript"})));
+    step = "audio start"; await resumed; if (ctx.state !== "running") await ctx.resume();
+    step = "audio processor";
+    try { await ctx.audioWorklet.addModule(URL.createObjectURL(new Blob([WORKLET], {type:"application/javascript"}))); }
+    catch { await ctx.audioWorklet.addModule("data:application/javascript;base64," + btoa(WORKLET)); }
     const src = ctx.createMediaStreamSource(stream);
     node = new AudioWorkletNode(ctx, "demod", {numberOfInputs:1, numberOfOutputs:1});
     const mute = ctx.createGain(); mute.gain.value = 0; node.connect(mute).connect(ctx.destination);
@@ -227,7 +232,13 @@ async function start(){
     node.port.onmessage = onMsg;
     $("srLbl").textContent = `${ctx.sampleRate/1000} kHz · ${stream.getAudioTracks()[0].label}`;
     $("go").textContent = "Listening"; status("ok", "listening");
-  } catch (e) { status("bad", "mic blocked: " + e.message); $("go").disabled = false; }
+  } catch (e) {
+    if (ctx){ ctx.close().catch(() => {}); ctx = null; }
+    const hint = step === "microphone permission" && e.name === "NotAllowedError"
+      ? "microphone permission denied. On iPhone: Settings → Safari → Microphone → Allow (or aA → Website Settings), then reload."
+      : `${step} failed (${e.name}): ${e.message}`;
+    status("bad", hint); $("go").disabled = false;
+  }
 }
 function onMsg(e){
   const d = e.data;
